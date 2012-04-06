@@ -82,8 +82,8 @@ set ylabel "gm*ro [1/V]"
 plot 'vdssweep.csv' using 1:(\$2/\$3) with lines title "gm*ro(vds)"
 END
 
-Use the png terminal if you cannot open eps files and change the output file extension
-to .png accordingly.
+Use the png terminal if you cannot open eps files and change the output file
+extension to .png accordingly.
 
 --
 
