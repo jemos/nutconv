@@ -235,9 +235,10 @@ found_points_line:
 		aux_ppoint->values = (double*)malloc(sizeof(double)*ncd->var_number);
 		memset(aux_ppoint->values,0,sizeof(double)*ncd->var_number);
 		value_idx = 0;
-		vars_left = ncd->var_number + 1; //zero based countdown
+		vars_left = ncd->var_number; //zero based countdown
 		
 		/* Read point' value. */
+		fscanf(input_file,"%lf",&aux_ppoint->values[value_idx]); // ignore index value.
 		while( vars_left && fscanf(input_file,"%lf",&aux_ppoint->values[value_idx]) ) {
 			vars_left--;
 			value_idx++;
