@@ -49,11 +49,7 @@ int main(int argc,char *argv[])
 	char input_file[512] = {'\0'};
 	char output_file[512] = {'\0'};
 	char output_format[32] = {'\0'};
-	char token[64];
-	bool vector_read = false;
-	double token_d;
-	int vector_idx;
-	FILE *f_in,*f_out;
+	FILE *f_in,*f_out = stdout;
 
 	while((c = getopt(argc,argv,"i:o:f:vh")) != -1)
 	{
@@ -87,6 +83,26 @@ int main(int argc,char *argv[])
 		fprintf(stderr,"Error: Missing input file argument.\n");
 		exit(EXIT_FAILURE);
 	}
+	
+	if( strlen(output_file) )
+	{
+		f_out = fopen(output_file,"w");
+		if( !f_out ) {
+			fprintf(stderr,"Error: Unable to open the output file for write <%s>.\n",output_file);
+			exit(EXIT_FAILURE);
+		}
+	}
+	
+	/* validate output format before processing the file */
+	if( (output_format[0] == '\0') || (!strcmp(output_format,"csv")) ) {
+		// OK
+	} else if( !strcmp(output_format,"matlab") ) {
+		// OK
+	} else {
+		fprintf(stderr,"Error: Invalid or unsupported output format given (%s)\n",output_format);
+		exit(EXIT_FAILURE);
+	}
+
 
 	/* open input file, start processing */
 	f_in = fopen(input_file,"r");
@@ -94,50 +110,26 @@ int main(int argc,char *argv[])
 		fprintf(stderr,"Error: Unable to open input file <%s>.\n",input_file);
 		exit(EXIT_FAILURE);
 	}
+	
 	nc_data *pncd;
-	nc_process(f_in,&pncd);
-	
-	printf("; ");
-	for(int i = 0 ; i < pncd->var_number ; i++)
-		printf("%s%s",pncd->headers[i].name,(i < (pncd->var_number-1) ? "," : "\n"));
-
-	return EXIT_SUCCESS;
-	
-	f_in = fopen(input_file,"r");
-	f_out = fopen(output_file,"w");
-	vector_read = false;
-	vector_idx = 0;
-	while(!feof(f_in))
-	{
-		if( vector_read )
-		{
-			if( fscanf(f_in,"%lf",&token_d) == 1 ) {
-				fprintf(f_out,"%s%e", vector_idx ? "," : "",token_d);
-				vector_idx++;
-
-				if(vector_idx == 81) {
-					vector_idx = 0;
-					fprintf(f_out,"\n");
-					printf(".");
-				}
-				continue;
-			}	
-
-			vector_read = false;
-			vector_idx = 0;
-			fprintf(f_out,"\n");
-		}
-
-		if( (fscanf(f_in,"%s",token) == 1) && !strcmp(token,"Values:") )
-		{
-			/* start reading vector */
-			vector_read = true;
-			continue;
-		}
+	if( !nc_process(f_in,&pncd) ) {
+		fprintf(stderr,"\nError: nclib failed to process results file (error description: %s)\n\n",nc_strerror());
+		exit(EXIT_FAILURE);
 	}
-	fclose(f_in);
-	fclose(f_out);
+	printf("Processed %u plots.\n",pncd->plot_number);
 
+	fclose(f_in);
+	
+	if( (output_format[0] == '\0') || (!strcmp(output_format,"csv")) ) {
+		nc_output_csv(pncd,f_out);
+	} else if( !strcmp(output_format,"matlab") ) {
+		nc_output_matlab(pncd,f_out);
+	}
+	
+	if( f_out != stdout ) {
+		fclose(f_out);
+	}
+	
 	return EXIT_SUCCESS;
 }
 

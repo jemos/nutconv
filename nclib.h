@@ -49,10 +49,16 @@ typedef struct _nc_data {
 	nc_point_list points;
 	unsigned int var_number;
 	unsigned int point_number;
+	struct _nc_data *next_plot;
+	unsigned int plot_number;
 } nc_data;
 
 bool nc_initialize(void);
 bool nc_process(FILE *input_file,nc_data **pncd);
 bool nc_uninitialize(void);
+const char *nc_strerror(void);
+
+bool nc_output_csv(nc_data *pncd,FILE *fout);
+bool nc_output_matlab(nc_data *pncd,FILE *fout);
 
 #endif

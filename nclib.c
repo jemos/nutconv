@@ -30,6 +30,8 @@
 #include "nclib.h"
 
 static char nc_errormsg[256] = {'\0'};
+static bool b_verbose = false;
+static bool b_multiplot = false;
 
 /*
    nc_initialize
@@ -63,8 +65,7 @@ bool aux_readline(FILE *f,char *buffer_ptr,size_t buffer_size,unsigned int *line
 bool nc_process(FILE *input_file,nc_data **pncd)
 {
 	static char buffer[1024];
-	nc_data *ncd = NULL;
-	double auxd;
+	nc_data *ncd = NULL, *ncd_head = NULL, *ncd_new = NULL;
 	unsigned int line_idx;
 	char sz_title[] = "Title: ";
 	char sz_novars[] = "No. Variables: ";
@@ -75,28 +76,40 @@ bool nc_process(FILE *input_file,nc_data **pncd)
 	unsigned int headers_left = 0;
 	size_t alloc_size;
 	nc_header_entry *aux_phdr = NULL;
+	unsigned int plot_number = 0;
 	 
 	/* allocate a new data structure */
-	ncd = (nc_data*)malloc(sizeof(nc_data));
-	if( !ncd ) {
-		strcpy(nc_errormsg,"Unable to allocate memory for ncdata.");
-		return false;
-	}
-	memset(ncd,'\0',sizeof(nc_data));
+	ncd_head = NULL;
 	
 	/*
 		the file starts with the following header:
+		
 		Title: (no title)
 		Date: 5:52:14 AM, Fri Apr 6, 2012
-		Plotname: DC Analysis `VGS_SWEEP-000_VDS_SWEEP': VDN = (0 -> 3.3)
-		Flags: real
-		No. Variables:       80    
-		No. Points:      101   
-		Variables:  0   VDN sweep 
-					...
+	*	Plotname: DC Analysis `VGS_SWEEP-000_VDS_SWEEP': VDN = (0 -> 3.3)
+	*	Flags: real
+	*	No. Variables:       80    
+	*	No. Points:      101   
+	*	Variables:  0   VDN sweep 
+	*				...
+	
+	(*) Headers associated for each plot.
+	
 	*/
 	rewind(input_file);
 	
+next_plot:
+
+	ncd_new = (nc_data*)malloc(sizeof(nc_data));
+	if( !ncd_new ) {
+		strcpy(nc_errormsg,"Unable to allocate memory for ncdata.");
+		return false;
+	}
+	memset(ncd_new,'\0',sizeof(nc_data));
+	
+	if( ncd_head == NULL )
+		ncd_head = ncd = ncd_new;
+
 	b_atvars = false;
 	while( aux_readline(input_file,buffer,sizeof(buffer),&line_idx) )
 	{
@@ -104,19 +117,19 @@ bool nc_process(FILE *input_file,nc_data **pncd)
 			continue;
 			
 		if( !memcmp(buffer,sz_title,sizeof(sz_title)-1) ) {
-			strncpy(ncd->title,buffer+sizeof(sz_title)-1,sizeof(ncd->title));
+			strncpy(ncd_new->title,buffer+sizeof(sz_title)-1,sizeof(ncd_new->title));
 		}
 		
 		if( !memcmp(buffer,sz_novars,sizeof(sz_novars)-1) )
 		{
-			if( !sscanf(buffer+sizeof(sz_novars)-1,"%u",&(ncd->var_number)) ) {
+			if( !sscanf(buffer+sizeof(sz_novars)-1,"%u",&(ncd_new->var_number)) ) {
 				strcpy(nc_errormsg,"Unable to process \"No. Variables\" token.");
 			}
 		}
 		
 		if( !memcmp(buffer,sz_nopts,sizeof(sz_nopts)-1) )
 		{
-			if( !sscanf(buffer+sizeof(sz_nopts)-1,"%u",&(ncd->point_number)) ) {
+			if( !sscanf(buffer+sizeof(sz_nopts)-1,"%u",&(ncd_new->point_number)) ) {
 				strcpy(nc_errormsg,"Unable to process \"No. Points\" token.");
 			}
 		}
@@ -127,14 +140,29 @@ bool nc_process(FILE *input_file,nc_data **pncd)
 		}
 	}
 	
-	if( !b_atvars ) {
-		strcpy(nc_errormsg,"Unable to find variables definition.");
-		goto fail_free_ncd;
+	if( !b_atvars )
+	{	
+		if( ncd_new != ncd ) {
+			/* No more plots to process. */
+			free(ncd_new);
+		}
+		*pncd = ncd_head;
+		ncd_head->plot_number = plot_number;
+		return true;
+		
+//		strcpy(nc_errormsg,"Unable to find variables definition.");
+//		goto fail_free_ncd;
 	}
 	
 	if( !ncd->var_number ) {
 		strcpy(nc_errormsg,"The results file doesnt contain any variable.");
 		goto fail_free_ncd;
+	}
+	
+	/* link this new ncd to the plots if it is multi-plot result */
+	if( ncd_new != ncd ) {
+		ncd->next_plot = ncd_new;
+		ncd = ncd_new;
 	}
 	
 	/* we've the header informations, allocate the required memory for headers */
@@ -207,7 +235,7 @@ found_points_line:
 		aux_ppoint->values = (double*)malloc(sizeof(double)*ncd->var_number);
 		memset(aux_ppoint->values,0,sizeof(double)*ncd->var_number);
 		value_idx = 0;
-		vars_left = ncd->var_number; //zero based countdown
+		vars_left = ncd->var_number + 1; //zero based countdown
 		
 		/* Read point' value. */
 		while( vars_left && fscanf(input_file,"%lf",&aux_ppoint->values[value_idx]) ) {
@@ -219,8 +247,8 @@ found_points_line:
 		points_left--;
 	}
 	
-	*pncd = ncd;
-	return true;
+	plot_number++;
+	goto next_plot;
 
 fail_free_points:
 	free(ncd->points);
@@ -243,3 +271,30 @@ const char *nc_strerror(void)
 	return (const char*)nc_errormsg;
 }
 
+bool nc_output_csv(nc_data *pncd,FILE *fout)
+{
+	/* Output file in CSV format, default. */
+	fprintf(fout,"; ");
+	for(int i = 0 ; i < pncd->var_number ; i++)
+		fprintf(fout,"%s%s",pncd->headers[i].name,(i < (pncd->var_number-1) ? "," : "\n"));
+	
+plot_next:	
+	for( int pidx = 0 ; pidx < pncd->point_number ; pidx++ )
+	{
+		for( int vidx = 0 ; vidx < pncd->var_number ; vidx++ ) {
+			fprintf(fout,"%0.6e%s",pncd->points[pidx].values[vidx],(vidx < (pncd->var_number-1) ? "\t" : "\n"));
+		}
+	}
+	
+	if( pncd->next_plot ) {
+		pncd = pncd->next_plot;
+		goto plot_next;
+	}
+	
+	return true;
+}
+
+bool nc_output_matlab(nc_data *pncd,FILE *fout)
+{
+	return false;
+}
