@@ -1,0 +1,13 @@
+nutconv v0.1
+
+Motivation: required a fast tool to convert nutascii format to
+other formats, namely, CSV. This way spectre output simulation
+data can be reused in other programs (eg.: Matlab, gnuplot, etc.).
+
+It is known that using Ocean ocnPrint function one can actually
+print the signals in a formated string however that requires the
+usage of Ocean to do all the simulation (using selectResults with
+spectre made psf results not always works).
+
+Copyright (c) 2012 - Jean-François Mousinho
+
