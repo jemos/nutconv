@@ -78,7 +78,7 @@ set grid
 set output "gmro_sweep.eps"
 set title "Intrinsic Gain Plot"
 set xlabel "Vds [V]"
-set ylabel "gm*ro [1/V]"
+set ylabel "gm*ro [V/V]"
 plot 'vdssweep.csv' using 1:(\$2/\$3) with lines title "gm*ro(vds)"
 END
 
